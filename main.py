@@ -58,35 +58,48 @@ def printar_instancia(voos, pistas, matriz_tempo):
 
 
 def heuristica_gulosa(voos, pistas, matriz_tempo):
-    for voo in sorted(voos, key=lambda v: v.c):  # prioriza voos com janelas mais apertadas
-        alocado = False
-        for tempo in range(voo.r, voo.c + 1):  # tenta cada horário da janela
-            for pista in pistas:
-                if tempo in pista.ocupada_em:
-                    continue
+    custo_total = 0
 
-                # verifica tempo de separação com outros voos já atribuídos a essa pista
-                conflito = False
-                for outro_voo in voos:
-                    if outro_voo.pista_atribuida == pista.id and outro_voo.horario_atribuido is not None:
-                        delta = abs(tempo - outro_voo.horario_atribuido)
-                        separacao = matriz_tempo[voo.id][outro_voo.id]
-                        if delta < separacao:
-                            conflito = True
-                            break
+    # Ordena os voos pelo tempo de liberação
+    voos_ordenados = sorted(voos, key=lambda v: v.r)
 
-                if not conflito:
-                    voo.horario_atribuido = tempo
-                    voo.pista_atribuida = pista.id
-                    pista.ocupada_em.add(tempo)
-                    alocado = True
-                    break
+    for voo in voos_ordenados:
+        melhor_inicio = float('inf')
+        melhor_pista = None
 
-            if alocado:
-                break
+        for pista in pistas:
+            # Tenta alocar o voo no tempo mais cedo possível respeitando separação
+            tempo_minimo = voo.r
 
-        if not alocado:
-            print(f"⚠️ Não foi possível alocar o voo {voo.id}")
+            for outro_voo in voos:
+                if outro_voo.pista_atribuida == pista.id and outro_voo.horario_atribuido is not None:
+                    tempo_final = outro_voo.horario_atribuido + outro_voo.c
+                    separacao = matriz_tempo[outro_voo.id][voo.id]
+                    tempo_minimo = max(tempo_minimo, tempo_final + separacao)
+
+            # Verifica se essa pista é melhor que a anterior
+            if tempo_minimo < melhor_inicio:
+                melhor_inicio = tempo_minimo
+                melhor_pista = pista
+
+        # Atribui voo à pista escolhida
+        voo.horario_atribuido = melhor_inicio
+        voo.pista_atribuida = melhor_pista.id
+
+        # Marca os horários ocupados
+        for t in range(voo.horario_atribuido, voo.horario_atribuido + voo.c):
+            melhor_pista.ocupada_em.add(t)
+
+        # Calcula custo de penalidade
+        atraso = max(0, voo.horario_atribuido - voo.r)
+        penalidade = atraso * voo.p
+        custo_total += penalidade
+
+    print(f"\n💸 Custo total de penalidade: {custo_total}")
+
+
+
+
 
 
 

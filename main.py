@@ -21,7 +21,7 @@ class Voo:
     def __init__(self, id_voo, r, c, p):
         self.id = id_voo
         self.r = r  # horário de chegada
-        self.c = c  # horário mais cedo de pouso
+        self.c = c  # tempo necessário pra decolar/pousar
         self.p = p  # penalidade por minuto de espera
         self.horario_atribuido = None  # será preenchido na solução
         self.pista_atribuida = None    # idem
@@ -98,12 +98,143 @@ def heuristica_gulosa(voos, pistas, matriz_tempo):
     print(f"\n💸 Custo total de penalidade: {custo_total}")
 
 
+def movimento_trocar_pistas(voos, pistas, matriz_tempo):
+    import copy
+    nova_solucao = copy.deepcopy(voos)
+
+    for i in range(len(nova_solucao)):
+        for j in range(i + 1, len(nova_solucao)):
+            voo1 = nova_solucao[i]
+            voo2 = nova_solucao[j]
+
+            if voo1.pista_atribuida != voo2.pista_atribuida:
+                # Tenta trocar
+                pista1, pista2 = voo1.pista_atribuida, voo2.pista_atribuida
+
+                # Troca as pistas
+                voo1.pista_atribuida, voo2.pista_atribuida = pista2, pista1
+
+                # Tenta recalcular horários
+                sucesso = tentar_recalcular_horario(voo1, nova_solucao, matriz_tempo) and \
+                          tentar_recalcular_horario(voo2, nova_solucao, matriz_tempo)
+
+                if sucesso:
+                    return nova_solucao  # vizinho viável encontrado
+
+                # Reverte
+                voo1.pista_atribuida, voo2.pista_atribuida = pista1, pista2
+    return None  # nenhum vizinho viável
+
+
+def movimento_ajustar_horario(voos, matriz_tempo):
+    import copy
+    nova_solucao = copy.deepcopy(voos)
+
+    for voo in nova_solucao:
+        for delta in [-5, 5]:
+            novo_horario = voo.horario_atribuido + delta
+            if novo_horario < voo.r:
+                continue  # não pode antes do release
+
+            # testa viabilidade
+            pista_voos = [v for v in nova_solucao if v.pista_atribuida == voo.pista_atribuida and v.id != voo.id]
+
+            if eh_horario_valido(voo, novo_horario, pista_voos, matriz_tempo):
+                voo.horario_atribuido = novo_horario
+                return nova_solucao
+
+    return None
+
+
+def movimento_trocar_ordem_pista(voos, matriz_tempo):
+    import copy
+    nova_solucao = copy.deepcopy(voos)
+
+    pistas_ids = list(set(v.pista_atribuida for v in voos))
+    for pista_id in pistas_ids:
+        voos_na_pista = sorted([v for v in nova_solucao if v.pista_atribuida == pista_id], key=lambda x: x.horario_atribuido)
+        for i in range(len(voos_na_pista) - 1):
+            v1, v2 = voos_na_pista[i], voos_na_pista[i + 1]
+            v1_idx, v2_idx = v1.id, v2.id
+
+            # troca ordem
+            v1.horario_atribuido, v2.horario_atribuido = None, None
+
+            # troca ids na lista
+            voos_na_pista[i], voos_na_pista[i + 1] = v2, v1
+
+            # tenta reatribuir horários
+            tempo_atual = 0
+            viavel = True
+            for v in voos_na_pista:
+                inicio = max(v.r, tempo_atual)
+                if not eh_horario_valido(v, inicio, voos_na_pista, matriz_tempo):
+                    viavel = False
+                    break
+                v.horario_atribuido = inicio
+                tempo_atual = inicio + v.c + matriz_tempo[v.id][v.id]  # separação entre ele mesmo e o próximo
+
+            if viavel:
+                return nova_solucao
+
+    return None
+
+
+def eh_horario_valido(voo, novo_horario, outros_voos, matriz_tempo):
+    fim_novo = novo_horario + voo.c
+    for outro in outros_voos:
+        if outro.horario_atribuido is None:
+            continue
+        fim_outro = outro.horario_atribuido + outro.c
+        if voo.id == outro.id:
+            continue
+
+        # Respeita separação entre voos
+        if voo.pista_atribuida == outro.pista_atribuida:
+            sep = matriz_tempo[outro.id][voo.id]
+            if not (novo_horario >= fim_outro + sep or fim_novo + matriz_tempo[voo.id][outro.id] <= outro.horario_atribuido):
+                return False
+    return True
+
+def tentar_recalcular_horario(voo, todos_voos, matriz_tempo):
+    pista_voos = [v for v in todos_voos if v.pista_atribuida == voo.pista_atribuida and v.id != voo.id]
+
+    t = voo.r
+    while t < 200:  # limite arbitrário
+        if eh_horario_valido(voo, t, pista_voos, matriz_tempo):
+            voo.horario_atribuido = t
+            return True
+        t += 1
+    return False
+
+
+def calcular_custo_total(voos):
+    return sum(max(0, v.horario_atribuido - v.r) * v.p for v in voos)
 
 
 
 
-
+# Solução inicial com a heurística gulosa
 voos, pistas, matriz_tempo = inicializar_instancia(numero_de_voos, numero_de_pistas, r, c, p, t)
 heuristica_gulosa(voos, pistas, matriz_tempo)
-printar_instancia(voos, pistas, matriz_tempo)
 
+print("\n🔹 Solução inicial:")
+printar_instancia(voos, pistas, matriz_tempo)
+print(f"💸 Custo total inicial: {calcular_custo_total(voos)}")
+
+# Testa cada movimento individualmente
+mov1 = movimento_trocar_pistas(voos, pistas, matriz_tempo)
+mov2 = movimento_ajustar_horario(voos, matriz_tempo)
+mov3 = movimento_trocar_ordem_pista(voos, matriz_tempo)
+
+if mov1:
+    print("\n🔁 Movimento 1 aplicado (troca de pistas):")
+    print(f"💸 Novo custo: {calcular_custo_total(mov1)}")
+
+if mov2:
+    print("\n🔄 Movimento 2 aplicado (ajuste de horário):")
+    print(f"💸 Novo custo: {calcular_custo_total(mov2)}")
+
+if mov3:
+    print("\n🔃 Movimento 3 aplicado (troca de ordem na pista):")
+    print(f"💸 Novo custo: {calcular_custo_total(mov3)}")

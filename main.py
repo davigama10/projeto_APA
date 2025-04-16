@@ -212,29 +212,66 @@ def calcular_custo_total(voos):
     return sum(max(0, v.horario_atribuido - v.r) * v.p for v in voos)
 
 
+def VND(voos_iniciais, pistas_iniciais, matriz_tempo):
+    import copy
+    voos_atual = copy.deepcopy(voos_iniciais)
+    pistas_atual = pistas_iniciais
+    custo_atual = calcular_custo_total(voos_atual)
+
+    movimentos = [
+        movimento_trocar_pistas,
+        movimento_ajustar_horario,
+        movimento_trocar_ordem_pista
+    ]
+
+    k = 0
+    while k < len(movimentos):
+        movimento = movimentos[k]
+
+        # 🔧 Corrigido aqui
+        if movimento == movimento_trocar_pistas:
+            nova_solucao = movimento(voos_atual, pistas_atual, matriz_tempo)
+        else:
+            nova_solucao = movimento(voos_atual, matriz_tempo)
+
+        if nova_solucao:
+            novo_custo = calcular_custo_total(nova_solucao)
+            if novo_custo < custo_atual:
+                print(f"\n✅ Movimento {k+1} melhorou a solução: {custo_atual} → {novo_custo}")
+                voos_atual = nova_solucao
+                custo_atual = novo_custo
+                k = 0  # reinicia
+                continue
+
+        k += 1
+
+    return voos_atual, custo_atual
 
 
-# Solução inicial com a heurística gulosa
+
+
+
+import time
+
+# Gera solução inicial com heurística gulosa
 voos, pistas, matriz_tempo = inicializar_instancia(numero_de_voos, numero_de_pistas, r, c, p, t)
 heuristica_gulosa(voos, pistas, matriz_tempo)
 
-print("\n🔹 Solução inicial:")
-printar_instancia(voos, pistas, matriz_tempo)
-print(f"💸 Custo total inicial: {calcular_custo_total(voos)}")
+custo_inicial = calcular_custo_total(voos)
+print(f"\n💡 Custo inicial da solução gulosa: {custo_inicial}")
 
-# Testa cada movimento individualmente
-mov1 = movimento_trocar_pistas(voos, pistas, matriz_tempo)
-mov2 = movimento_ajustar_horario(voos, matriz_tempo)
-mov3 = movimento_trocar_ordem_pista(voos, matriz_tempo)
+# Executa VND
+inicio = time.time()
+solucao_final, custo_final = VND(voos, pistas, matriz_tempo)
+fim = time.time()
 
-if mov1:
-    print("\n🔁 Movimento 1 aplicado (troca de pistas):")
-    print(f"💸 Novo custo: {calcular_custo_total(mov1)}")
+print("\n🎯 RESULTADO FINAL APÓS VND")
+print(f"🔸 Melhor custo encontrado: {custo_final}")
+print(f"⏱ Tempo de execução: {fim - inicio:.4f} segundos")
 
-if mov2:
-    print("\n🔄 Movimento 2 aplicado (ajuste de horário):")
-    print(f"💸 Novo custo: {calcular_custo_total(mov2)}")
-
-if mov3:
-    print("\n🔃 Movimento 3 aplicado (troca de ordem na pista):")
-    print(f"💸 Novo custo: {calcular_custo_total(mov3)}")
+# Se quiser mostrar a solução final detalhada:
+print("\n📦 Atribuições finais dos voos:")
+for voo in sorted(solucao_final, key=lambda v: v.horario_atribuido):
+    atraso = max(0, voo.horario_atribuido - voo.r)
+    custo = atraso * voo.p
+    print(f"Voo {voo.id} → Pista {voo.pista_atribuida} | Início: {voo.horario_atribuido} | Duração: {voo.c} | Atraso: {atraso} | Penalidade: {custo}")

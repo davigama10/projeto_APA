@@ -1,5 +1,5 @@
 import os
-from main import inicializar_instancia, heuristica_gulosa, calcular_custo_total, VND
+from main_2 import inicializar_instancia, heuristica_gulosa, calcular_custo_total, VND
 
 # Caminho para a pasta com os arquivos de entrada
 pasta_instancias = 'instancias_teste'
@@ -28,7 +28,7 @@ for arquivo in arquivos:
     custo_guloso = calcular_custo_total(voos)
 
     # Aplica VND
-    solucao_final, custo_final = VND(voos, pistas, matriz_tempo)
+    custo_final = VND(voos, pistas, matriz_tempo)
 
     # Armazena resultado
     resultados.append((arquivo, custo_guloso, custo_final))

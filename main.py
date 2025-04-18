@@ -68,10 +68,13 @@ def heuristica_gulosa(voos, pistas, matriz_tempo):
         melhor_pista = None
 
         for pista in pistas:
+            
             # Tenta alocar o voo no tempo mais cedo possível respeitando separação
             tempo_minimo = voo.r
 
             for outro_voo in voos:
+                 
+                
                 if outro_voo.pista_atribuida == pista.id and outro_voo.horario_atribuido is not None:
                     tempo_final = outro_voo.horario_atribuido + outro_voo.c
                     separacao = matriz_tempo[outro_voo.id][voo.id]
@@ -255,11 +258,15 @@ import time
 
 # Gera solução inicial com heurística gulosa
 voos, pistas, matriz_tempo = inicializar_instancia(numero_de_voos, numero_de_pistas, r, c, p, t)
+printar_instancia(voos, pistas, matriz_tempo)
+print('\n\n ===============================')
 heuristica_gulosa(voos, pistas, matriz_tempo)
+
+
 
 custo_inicial = calcular_custo_total(voos)
 print(f"\n💡 Custo inicial da solução gulosa: {custo_inicial}")
-
+'''
 # Executa VND
 inicio = time.time()
 solucao_final, custo_final = VND(voos, pistas, matriz_tempo)
@@ -275,3 +282,4 @@ for voo in sorted(solucao_final, key=lambda v: v.horario_atribuido):
     atraso = max(0, voo.horario_atribuido - voo.r)
     custo = atraso * voo.p
     print(f"Voo {voo.id} → Pista {voo.pista_atribuida} | Início: {voo.horario_atribuido} | Duração: {voo.c} | Atraso: {atraso} | Penalidade: {custo}")
+'''

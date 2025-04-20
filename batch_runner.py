@@ -1,5 +1,5 @@
 import os
-from main_2 import inicializar_instancia, heuristica_gulosa, calcular_custo_total, VND
+from main_2 import inicializar_instancia, heuristica_gulosa, calcular_custo_total, VND, printar_instancia
 
 # Caminho para a pasta com os arquivos de entrada
 pasta_instancias = 'instancias_teste'

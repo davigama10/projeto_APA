@@ -221,49 +221,90 @@ def validar_solucao(voos, pistas, matriz_tempo):
 ## Fim Funções auxiliares
 
 ## 1 Movimento Swap
-def movimento_swap(voos, pistas, matriz_tempo):
+def movimento_swap_mesma_pista(voos, pistas, matriz_tempo):
     """
-    Troca a alocação de dois voos entre si (podendo ser na mesma pista ou entre pistas diferentes)
-    Retorna True se encontrou uma melhoria, False caso contrário
+    Troca a ordem de dois voos na mesma pista.
+    Retorna True se encontrou uma melhoria válida, False caso contrário.
     """
     melhor_custo = calcular_custo_total(voos)
     melhorou = False
-    
+
+    for pista in pistas:
+        # Pega todos os voos nesta pista, ordenados pelo horário atual
+        voos_pista = [v for v in voos if v.pista_atribuida == pista.id]
+        voos_pista.sort(key=lambda v: v.horario_atribuido)
+
+        # Tenta todas as combinações possíveis de troca entre dois voos
+        for i in range(len(voos_pista)):
+            for j in range(i + 1, len(voos_pista)):
+                # Faz backup da ordem atual
+                ordem_original = voos_pista[:]
+                horarios_originais = [v.horario_atribuido for v in voos_pista]
+
+                # Troca os dois voos
+                voos_pista[i], voos_pista[j] = voos_pista[j], voos_pista[i]
+
+                # Recalcula os horários e valida a solução
+                if recalcular_horarios_pista(voos_pista, pista, matriz_tempo): # and validar_solucao(voos, pistas, matriz_tempo):
+                    novo_custo = calcular_custo_total(voos)
+                    if novo_custo < melhor_custo:
+                        melhor_custo = novo_custo
+                        melhorou = True
+                        print("SWAP MESMA PISTA --> CUSTO MELHORADO:", melhor_custo)
+                        break
+                else:
+                    # Restaura a ordem original se não foi viável
+                    voos_pista = ordem_original
+                    for idx, voo in enumerate(voos_pista):
+                        voo.horario_atribuido = horarios_originais[idx]
+
+            if melhorou:
+                break
+
+    return melhorou
+
+def movimento_swap_entre_pistas(voos, pistas, matriz_tempo):
+    """
+    Troca dois voos entre pistas diferentes.
+    Retorna True se encontrou uma melhoria válida, False caso contrário.
+    """
+    melhor_custo = calcular_custo_total(voos)
+    melhorou = False
+
     for i in range(len(voos)):
-        for j in range(i+1, len(voos)):
+        for j in range(i + 1, len(voos)):
             voo1 = voos[i]
             voo2 = voos[j]
-            
-            # Faz backup dos valores atuais
-            pista1_original = voo1.pista_atribuida
-            pista2_original = voo2.pista_atribuida
-            horario1_original = voo1.horario_atribuido
-            horario2_original = voo2.horario_atribuido
-            
-            # Realiza a troca
-            voo1.pista_atribuida, voo2.pista_atribuida = voo2.pista_atribuida, voo1.pista_atribuida
-            voo1.horario_atribuido, voo2.horario_atribuido = voo2.horario_atribuido, voo1.horario_atribuido
-            
-            # Recalcula os horários para as pistas afetadas
-            pistas_afetadas = list({pista1_original, pista2_original})
-            if recalcular_horarios(voos, pistas, matriz_tempo, pistas_afetadas):
-                novo_custo = calcular_custo_total(voos)
-                if novo_custo < melhor_custo:
-                    melhor_custo = novo_custo
-                    print("SWAP --> CUSTO MELHORADO:", melhor_custo)
-                    melhorou = True
-                    #break
-                else: 
-                    # Desfaz a troca se não melhorou
+
+            # Só tenta trocar se os voos estão em pistas diferentes
+            if voo1.pista_atribuida != voo2.pista_atribuida:
+                # Faz backup dos valores atuais
+                pista1_original = voo1.pista_atribuida
+                pista2_original = voo2.pista_atribuida
+                horario1_original = voo1.horario_atribuido
+                horario2_original = voo2.horario_atribuido
+
+                # Troca os voos entre as pistas
+                voo1.pista_atribuida, voo2.pista_atribuida = pista2_original, pista1_original
+                voo1.horario_atribuido, voo2.horario_atribuido = horario2_original, horario1_original
+
+                # Recalcula os horários para as pistas afetadas
+                pistas_afetadas = list({pista1_original, pista2_original})
+                if recalcular_horarios(voos, pistas, matriz_tempo, pistas_afetadas): # and validar_solucao(voos, pistas, matriz_tempo):
+                    novo_custo = calcular_custo_total(voos)
+                    if novo_custo < melhor_custo:
+                        melhor_custo = novo_custo
+                        melhorou = True
+                        print("SWAP ENTRE PISTAS --> CUSTO MELHORADO:", melhor_custo)
+                        break
+                else:
+                    # Desfaz a troca se não foi viável
                     voo1.pista_atribuida, voo2.pista_atribuida = pista1_original, pista2_original
                     voo1.horario_atribuido, voo2.horario_atribuido = horario1_original, horario2_original
-            else:
-                # Desfaz a troca se não foi viável
-                voo1.pista_atribuida, voo2.pista_atribuida = pista1_original, pista2_original
-                voo1.horario_atribuido, voo2.horario_atribuido = horario1_original, horario2_original
+
         if melhorou:
             break
-            
+
     return melhorou
 
 ## 2 Movimento Re Insertion
@@ -295,7 +336,7 @@ def movimento_reinsertion(voos, pistas, matriz_tempo):
                 voo.pista_atribuida = pista.id
                 
                 # Recalcula todos os horários na pista
-                if recalcular_horarios_pista(voos_pista + [voo], pista, matriz_tempo):
+                if recalcular_horarios_pista(voos_pista + [voo], pista, matriz_tempo) and validar_solucao(voos, pistas, matriz_tempo):
                     novo_custo = calcular_custo_total(voos)
                     if novo_custo < melhor_custo:
                         melhor_custo = novo_custo
@@ -326,7 +367,7 @@ def movimento_reinsertion(voos, pistas, matriz_tempo):
                 
     return melhorou
 
-def movimento_retirar_inserir(voos, pistas, matriz_tempo):
+def movimento_reinsertion_outra_pista(voos, pistas, matriz_tempo):
     """
     Remove um voo de sua pista atual e tenta inseri-lo em outra pista.
     Retorna True se encontrou uma melhoria válida, False caso contrário.
@@ -356,7 +397,7 @@ def movimento_retirar_inserir(voos, pistas, matriz_tempo):
                     if novo_custo < melhor_custo:
                         melhor_custo = novo_custo
                         melhorou = True
-                        print("RETIRAR E INSERIR --> CUSTO MELHORADO:", melhor_custo)
+                        print("REINSERTION OUTRA PISTA --> CUSTO MELHORADO:", melhor_custo)
                         break
                 else:
                     # Remove o voo da pista se não foi viável
@@ -368,60 +409,6 @@ def movimento_retirar_inserir(voos, pistas, matriz_tempo):
             voo.horario_atribuido = horario_original
 
     return melhorou
-
-def movimento_reinsertion_mesma_pista(voos, pistas, matriz_tempo):
-    """
-    Remove um voo de sua posição atual e tenta reinseri-lo em outra posição na mesma pista.
-    Retorna True se encontrou uma melhoria válida, False caso contrário.
-    """
-    melhor_custo = calcular_custo_total(voos)
-    melhorou = False
-
-    for pista in pistas:
-        # Pega todos os voos nesta pista, ordenados pelo horário atual
-        voos_pista = [v for v in voos if v.pista_atribuida == pista.id]
-        voos_pista.sort(key=lambda v: v.horario_atribuido)
-
-        for i in range(len(voos_pista)):
-            voo = voos_pista[i]
-
-            # Remove temporariamente o voo da pista
-            voos_pista.pop(i)
-            horarios_originais = [v.horario_atribuido for v in voos_pista]
-
-            # Tenta reinserir o voo em todas as posições possíveis na mesma pista
-            for pos in range(len(voos_pista) + 1):
-                voos_pista.insert(pos, voo)
-
-                # Recalcula os horários e valida a solução
-                if recalcular_horarios_pista(voos_pista, pista, matriz_tempo) and validar_solucao(voos, pistas, matriz_tempo):
-                    novo_custo = calcular_custo_total(voos)
-                    if novo_custo < melhor_custo:
-                        melhor_custo = novo_custo
-                        melhorou = True
-                        print("REINSERTION MESMA PISTA --> CUSTO MELHORADO:", melhor_custo)
-                        break
-                else:
-                    # Remove o voo da posição atual se não foi viável
-                    voos_pista.pop(pos)
-
-            # Restaura a ordem original se não houve melhoria
-            if not melhorou:
-                # Restaura a lista original de voos na pista
-                voos_pista = [v for v in voos if v.pista_atribuida == pista.id]
-                
-                # Garante que o tamanho de voos_pista e horarios_originais seja o mesmo
-                if len(voos_pista) == len(horarios_originais):
-                    for idx, voo_restaurado in enumerate(voos_pista):
-                        voo_restaurado.horario_atribuido = horarios_originais[idx]
-                else:
-                    continue
-
-            if melhorou:
-                break
-
-    return melhorou
-
 def VND(voos, pistas, matriz_tempo):
     """
     Algoritmo VND que aplica os movimentos de vizinhança em ordem
@@ -431,11 +418,12 @@ def VND(voos, pistas, matriz_tempo):
     print(f"Custo inicial: {melhor_custo}")
     
     # Ordem dos movimentos de vizinhança (do menos para o mais disruptivo)
-    movimentos = [movimento_swap,
-        #movimento_reinsertion_mesma_pista,
-        movimento_reinsertion,
-        #movimento_retirar_inserir,
-        ]
+    movimentos = [movimento_reinsertion_outra_pista,movimento_swap_entre_pistas,
+                  movimento_swap_mesma_pista,
+       #movimento_reinsertion,
+       #movimento_retirar_inserir,
+       
+       ]
     
     k = 0
     while k < len(movimentos):

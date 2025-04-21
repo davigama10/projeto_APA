@@ -1,3 +1,6 @@
+import copy
+import random
+
 with open('entrada.txt', 'r') as f:
     linhas = [linha.strip() for linha in f if linha.strip()]
 
@@ -41,22 +44,22 @@ def inicializar_instancia(numero_de_voos, numero_de_pistas, r, c, p, t):
 
 
 def printar_instancia(voos, pistas, matriz_tempo):
-    print("📦 VOOS:")
+    print(" VOOS:")
     for voo in voos:
         print(
             f"Voo {voo.id}: r = {voo.r}, c = {voo.c}, p = {voo.p}, "
             f"horário atribuído = {voo.horario_atribuido}, pista = {voo.pista_atribuida}"
         )
 
-    print("\n🛬 PISTAS:")
+    print("\n PISTAS:")
     for pista in pistas:
         print(f"Pista {pista.id}, horários ocupados: {sorted(pista.ocupada_em)}")
 
-    print("\n⏱ MATRIZ DE SEPARAÇÃO (t):")
+    print("\n MATRIZ DE SEPARAÇÃO (t):")
     for i, linha in enumerate(matriz_tempo):
         print(f"Voo {i}: {linha}")
 
-
+# GULOSO ========================================================================================================================
 def heuristica_gulosa(voos, pistas, matriz_tempo):
     custo_total = 0
 
@@ -100,186 +103,434 @@ def heuristica_gulosa(voos, pistas, matriz_tempo):
 
     print(f"\n💸 Custo total de penalidade: {custo_total}")
 
+# VIZINHANÇA ===============================================================================================================
 
-def movimento_trocar_pistas(voos, pistas, matriz_tempo):
-    import copy
-    nova_solucao = copy.deepcopy(voos)
-
-    for i in range(len(nova_solucao)):
-        for j in range(i + 1, len(nova_solucao)):
-            voo1 = nova_solucao[i]
-            voo2 = nova_solucao[j]
-
-            if voo1.pista_atribuida != voo2.pista_atribuida:
-                # Tenta trocar
-                pista1, pista2 = voo1.pista_atribuida, voo2.pista_atribuida
-
-                # Troca as pistas
-                voo1.pista_atribuida, voo2.pista_atribuida = pista2, pista1
-
-                # Tenta recalcular horários
-                sucesso = tentar_recalcular_horario(voo1, nova_solucao, matriz_tempo) and \
-                          tentar_recalcular_horario(voo2, nova_solucao, matriz_tempo)
-
-                if sucesso:
-                    return nova_solucao  # vizinho viável encontrado
-
-                # Reverte
-                voo1.pista_atribuida, voo2.pista_atribuida = pista1, pista2
-    return None  # nenhum vizinho viável
+## Funções Auxiliares:
+def calcular_custo_total(voos):
+    """Calcula o custo total da solução atual"""
+    custo = 0
+    for voo in voos:
+        if voo.horario_atribuido is not None:
+            atraso = max(0, voo.horario_atribuido - voo.r)
+            custo += atraso * voo.p
+    return custo
 
 
-def movimento_ajustar_horario(voos, matriz_tempo):
-    import copy
-    nova_solucao = copy.deepcopy(voos)
+def recalcular_horarios(voos, pistas, matriz_tempo, pistas_afetadas):
+    """
+    Recalcula os horários para todas as pistas afetadas.
+    Retorna True se conseguiu uma alocação válida, False caso contrário.
+    """
+    for pista_id in pistas_afetadas:
+        if pista_id is None:
+            continue  # Ignora pistas não atribuídas
 
-    for voo in nova_solucao:
-        for delta in [-5, 5]:
-            novo_horario = voo.horario_atribuido + delta
-            if novo_horario < voo.r:
-                continue  # não pode antes do release
+        # Pega todos os voos nesta pista, ordenados pelo horário atual
+        voos_pista = [v for v in voos if v.pista_atribuida == pista_id]
+        voos_pista.sort(key=lambda v: v.horario_atribuido if v.horario_atribuido is not None else float('inf'))
+        
+        # Limpa os horários da pista
+        pistas[pista_id].ocupada_em = set()
+        
+        for i, voo in enumerate(voos_pista):
+            tempo_minimo = voo.r
+            
+            # Respeita separação com voo anterior
+            if i > 0:
+                voo_anterior = voos_pista[i-1]
+                tempo_final = voo_anterior.horario_atribuido + voo_anterior.c
+                separacao = matriz_tempo[voo_anterior.id][voo.id]
+                tempo_minimo = max(tempo_minimo, tempo_final + separacao)
+            
+            voo.horario_atribuido = tempo_minimo
 
-            # testa viabilidade
-            pista_voos = [v for v in nova_solucao if v.pista_atribuida == voo.pista_atribuida and v.id != voo.id]
+            # Verifica separação com o próximo voo
+            if i < len(voos_pista) - 1:
+                voo_proximo = voos_pista[i+1]
+                if voo_proximo.horario_atribuido is not None:
+                    tempo_final = voo.horario_atribuido + voo.c
+                    separacao = matriz_tempo[voo.id][voo_proximo.id]
+                    if tempo_final + separacao > voo_proximo.horario_atribuido:
+                        return False
 
-            if eh_horario_valido(voo, novo_horario, pista_voos, matriz_tempo):
-                voo.horario_atribuido = novo_horario
-                return nova_solucao
+            # Marca horários ocupados na pista
+            for t in range(voo.horario_atribuido, voo.horario_atribuido + voo.c):
+                pistas[pista_id].ocupada_em.add(t)
 
-    return None
-
-
-def movimento_trocar_ordem_pista(voos, matriz_tempo):
-    import copy
-    nova_solucao = copy.deepcopy(voos)
-
-    pistas_ids = list(set(v.pista_atribuida for v in voos))
-    for pista_id in pistas_ids:
-        voos_na_pista = sorted([v for v in nova_solucao if v.pista_atribuida == pista_id], key=lambda x: x.horario_atribuido)
-        for i in range(len(voos_na_pista) - 1):
-            v1, v2 = voos_na_pista[i], voos_na_pista[i + 1]
-            v1_idx, v2_idx = v1.id, v2.id
-
-            # troca ordem
-            v1.horario_atribuido, v2.horario_atribuido = None, None
-
-            # troca ids na lista
-            voos_na_pista[i], voos_na_pista[i + 1] = v2, v1
-
-            # tenta reatribuir horários
-            tempo_atual = 0
-            viavel = True
-            for v in voos_na_pista:
-                inicio = max(v.r, tempo_atual)
-                if not eh_horario_valido(v, inicio, voos_na_pista, matriz_tempo):
-                    viavel = False
-                    break
-                v.horario_atribuido = inicio
-                tempo_atual = inicio + v.c + matriz_tempo[v.id][v.id]  # separação entre ele mesmo e o próximo
-
-            if viavel:
-                return nova_solucao
-
-    return None
-
-
-def eh_horario_valido(voo, novo_horario, outros_voos, matriz_tempo):
-    fim_novo = novo_horario + voo.c
-    for outro in outros_voos:
-        if outro.horario_atribuido is None:
-            continue
-        fim_outro = outro.horario_atribuido + outro.c
-        if voo.id == outro.id:
-            continue
-
-        # Respeita separação entre voos
-        if voo.pista_atribuida == outro.pista_atribuida:
-            sep = matriz_tempo[outro.id][voo.id]
-            if not (novo_horario >= fim_outro + sep or fim_novo + matriz_tempo[voo.id][outro.id] <= outro.horario_atribuido):
-                return False
     return True
 
-def tentar_recalcular_horario(voo, todos_voos, matriz_tempo):
-    pista_voos = [v for v in todos_voos if v.pista_atribuida == voo.pista_atribuida and v.id != voo.id]
 
-    t = voo.r
-    while t < 200:  # limite arbitrário
-        if eh_horario_valido(voo, t, pista_voos, matriz_tempo):
-            voo.horario_atribuido = t
-            return True
-        t += 1
-    return False
+def recalcular_horarios_pista(voos_pista, pista, matriz_tempo):
+    """
+    Recalcula horários para uma única pista com uma nova ordem de voos
+    Retorna True se conseguiu uma alocação válida, False caso contrário
+    """
+    pista.ocupada_em = set()
+
+    for i, voo in enumerate(voos_pista):
+        tempo_minimo = voo.r
+
+        if i > 0:
+            voo_anterior = voos_pista[i - 1]
+            tempo_final = voo_anterior.horario_atribuido + voo_anterior.c
+            separacao = matriz_tempo[voo_anterior.id][voo.id]
+            tempo_minimo = max(tempo_minimo, tempo_final + separacao)
+
+        voo.horario_atribuido = tempo_minimo
+
+        for t in range(voo.horario_atribuido, voo.horario_atribuido + voo.c):
+            pista.ocupada_em.add(t)
+
+    return True
 
 
-def calcular_custo_total(voos):
-    return sum(max(0, v.horario_atribuido - v.r) * v.p for v in voos)
+def movimento_swap(voos, pistas, matriz_tempo):
+    """
+    Tenta trocar dois voos de pista e horário. 
+    Retorna (melhorou, nova_solucao_voos, novo_custo).
+    """
+    melhor_voos = copy.deepcopy(voos)
+    melhor_pistas = copy.deepcopy(pistas)
+    melhor_custo = calcular_custo_total(melhor_voos)
+    melhorou = False
+
+    for i in range(len(voos)):
+        for j in range(i + 1, len(voos)):
+            copia_voos = copy.deepcopy(voos)
+            copia_pistas = copy.deepcopy(pistas)
+
+            voo1 = copia_voos[i]
+            voo2 = copia_voos[j]
+
+            # Salva os originais
+            pista1_original = voo1.pista_atribuida
+            pista2_original = voo2.pista_atribuida
+            horario1_original = voo1.horario_atribuido
+            horario2_original = voo2.horario_atribuido
+
+            # Realiza a troca
+            voo1.pista_atribuida, voo2.pista_atribuida = pista2_original, pista1_original
+            voo1.horario_atribuido, voo2.horario_atribuido = horario2_original, horario1_original
+
+            pistas_afetadas = list({pista1_original, pista2_original})
+
+            if recalcular_horarios(copia_voos, copia_pistas, matriz_tempo, pistas_afetadas):
+                novo_custo = calcular_custo_total(copia_voos)
+                if novo_custo < melhor_custo:
+                    melhor_custo = novo_custo
+                    melhor_voos = copia_voos
+                    melhorou = True
+                    print("SWAP --> CUSTO MELHORADO:", melhor_custo)
+
+    return melhorou, melhor_voos, melhor_custo
 
 
-def VND(voos_iniciais, pistas_iniciais, matriz_tempo):
-    import copy
-    voos_atual = copy.deepcopy(voos_iniciais)
-    pistas_atual = pistas_iniciais
-    custo_atual = calcular_custo_total(voos_atual)
+def movimento_retirar_inserir(voos, pistas, matriz_tempo):
+    """
+    Remove um voo de sua pista atual e tenta inseri-lo em outra pista (trabalhando sobre cópias).
+    Retorna (melhorou, nova_solucao) — a nova solução só é retornada se houver melhoria.
+    """
+    melhor_custo = calcular_custo_total(voos)
+    melhorou = False
+    melhor_voos = copy.deepcopy(voos)  # Inicializa com a solução atual
 
+    for idx, voo in enumerate(voos):
+        for pista in pistas:
+            if pista.id != voo.pista_atribuida:
+                # Cria cópia da solução para testar essa modificação
+                voos_copia = copy.deepcopy(voos)
+                pistas_copia = copy.deepcopy(pistas)
+
+                voo_copia = voos_copia[idx]
+
+                # Remove da pista original
+                voo_copia.pista_atribuida = None
+                voo_copia.horario_atribuido = None
+
+                # Adiciona à nova pista
+                nova_pista = next(p for p in pistas_copia if p.id == pista.id)
+                voos_pista = [v for v in voos_copia if v.pista_atribuida == nova_pista.id]
+                voos_pista.append(voo_copia)
+                voos_pista.sort(key=lambda v: v.horario_atribuido if v.horario_atribuido is not None else float('inf'))
+
+                # Tenta recalcular horários nessa nova pista
+                if recalcular_horarios_pista(voos_pista, nova_pista, matriz_tempo):
+                    novo_custo = calcular_custo_total(voos_copia)
+                    if novo_custo < melhor_custo:
+                        melhor_custo = novo_custo
+                        melhor_voos = voos_copia
+                        melhorou = True
+                        print("RETIRAR E INSERIR --> CUSTO MELHORADO:", melhor_custo)
+                        break  # sai do loop de pistas
+
+        # Se já melhorou, não precisa mais testar esse voo
+        if melhorou:
+            break
+
+    return melhorou, melhor_voos, melhor_custo
+
+
+def movimento_ajuste_horario(voos, pistas, matriz_tempo):
+    """
+    Tenta ajustar os horários dos voos dentro de suas pistas atuais para reduzir atrasos.
+    Retorna: (melhorou, nova_solucao_voos, novo_custo)
+    """
+    melhor_voos = copy.deepcopy(voos)
+    melhor_pistas = copy.deepcopy(pistas)
+    melhor_custo = calcular_custo_total(melhor_voos)
+    melhorou = False
+
+    # Ordena voos por penalidade atual (maiores primeiro), filtrando voos sem pista atribuída
+    voos_ordenados = sorted(
+        [v for v in voos if v.pista_atribuida is not None],
+        key=lambda v: -v.p * max(0, v.horario_atribuido - v.r)
+    )
+
+    for voo in voos_ordenados:
+        # Cria cópia para testar modificação
+        voos_copia = copy.deepcopy(melhor_voos)
+        pistas_copia = copy.deepcopy(melhor_pistas)
+        
+        # Encontra o voo correspondente na cópia
+        voo_copia = next(v for v in voos_copia if v.id == voo.id)
+        
+        # Verifica se o voo ainda está alocado em uma pista válida
+        if voo_copia.pista_atribuida is None:
+            continue
+            
+        pista_copia = pistas_copia[voo_copia.pista_atribuida]
+        
+        # Pega todos os voos da pista (ordenados por horário)
+        voos_pista = [v for v in voos_copia if v.pista_atribuida == pista_copia.id]
+        voos_pista.sort(key=lambda v: v.horario_atribuido)
+        
+        try:
+            idx = voos_pista.index(voo_copia)
+        except ValueError:
+            continue  # Voo não está na pista (não deveria acontecer)
+        
+        # Calcula o novo horário mínimo possível
+        novo_horario = voo_copia.r
+        
+        # Respeita voo anterior (se existir)
+        if idx > 0:
+            voo_anterior = voos_pista[idx-1]
+            novo_horario = max(novo_horario, 
+                             voo_anterior.horario_atribuido + voo_anterior.c + 
+                             matriz_tempo[voo_anterior.id][voo_copia.id])
+        
+        # Só faz ajuste se for antecipar o voo
+        if novo_horario < voo_copia.horario_atribuido:
+            # Atualiza horário
+            voo_copia.horario_atribuido = novo_horario
+            
+            # Recalcula todos os voos subsequentes na pista
+            for i in range(idx+1, len(voos_pista)):
+                voo_atual = voos_pista[i]
+                voo_anterior = voos_pista[i-1]
+                
+                novo_horario = max(voo_atual.r,
+                                 voo_anterior.horario_atribuido + voo_anterior.c +
+                                 matriz_tempo[voo_anterior.id][voo_atual.id])
+                
+                if novo_horario >= voo_atual.horario_atribuido:
+                    break  # Não adianta continuar
+                    
+                voo_atual.horario_atribuido = novo_horario
+            
+            # Atualiza slots ocupados na pista
+            pista_copia.ocupada_em = set()
+            for v in voos_pista:
+                if v.horario_atribuido is not None:  # Verificação adicional
+                    for t in range(v.horario_atribuido, v.horario_atribuido + v.c):
+                        pista_copia.ocupada_em.add(t)
+            
+            # Verifica se melhorou o custo total
+            novo_custo = calcular_custo_total(voos_copia)
+            if novo_custo < melhor_custo:
+                melhor_custo = novo_custo
+                melhor_voos = voos_copia
+                melhor_pistas = pistas_copia
+                melhorou = True
+                print("AJUSTE DE HORÁRIO --> CUSTO MELHORADO:", melhor_custo)
+
+    return melhorou, melhor_voos, melhor_custo
+
+
+def VND(voos, pistas, matriz_tempo):
+    """
+    Algoritmo VND que aplica os movimentos de vizinhança em ordem
+    até não encontrar mais melhorias
+    """
+    melhor_custo = calcular_custo_total(voos)
+    print(f"Custo inicial: {melhor_custo}")
+    
+    # Ordem dos movimentos de vizinhança (do menos para o mais disruptivo)
     movimentos = [
-        movimento_trocar_pistas,
-        movimento_ajustar_horario,
-        movimento_trocar_ordem_pista
-    ]
-
+        movimento_swap,
+        movimento_ajuste_horario,
+        movimento_retirar_inserir,
+        ]
+    
     k = 0
     while k < len(movimentos):
         movimento = movimentos[k]
-
-        # 🔧 Corrigido aqui
-        if movimento == movimento_trocar_pistas:
-            nova_solucao = movimento(voos_atual, pistas_atual, matriz_tempo)
-        else:
-            nova_solucao = movimento(voos_atual, matriz_tempo)
-
-        if nova_solucao:
+        melhorou, nova_solucao, custo_pos_movimento = movimento(voos, pistas, matriz_tempo)
+        voos = nova_solucao
+        if melhorou:
             novo_custo = calcular_custo_total(nova_solucao)
-            if novo_custo < custo_atual:
-                print(f"\n✅ Movimento {k+1} melhorou a solução: {custo_atual} → {novo_custo}")
-                voos_atual = nova_solucao
-                custo_atual = novo_custo
-                k = 0  # reinicia
-                continue
-
-        k += 1
-
-    return voos_atual, custo_atual
+            print(f"Movimento {k+1} melhorou para: {novo_custo}")
+            melhor_custo = novo_custo
+            k = 0  # Volta ao primeiro movimento
+        else:
+            k += 1  # Passa para o próximo movimento
+            
+    print(f"Melhor custo encontrado: {melhor_custo}")
+    return melhor_custo
 
 
+def grasp(voos_originais, pistas_originais, matriz_tempo, max_iteracoes=10, alpha=0.3):
+    """
+    Implementação do GRASP para o problema de escalonamento de voos
+    
+    Parâmetros:
+    - voos_originais: lista de objetos Voo
+    - pistas_originais: lista de objetos Pista
+    - matriz_tempo: matriz de tempos de separação
+    - max_iteracoes: número máximo de iterações GRASP
+    - alpha: parâmetro de aleatoriedade (0 = totalmente guloso, 1 = totalmente aleatório)
+    
+    Retorna:
+    - melhor_solucao: dicionário com {'voos': ..., 'pistas': ..., 'custo': ...}
+    """
+    melhor_solucao = None
+    melhor_custo = float('inf')
+    solucoes = []
+
+    for _ in range(max_iteracoes):
+        # Fase de construção
+        solucao_construida = construir_solucao_grasp(
+            copy.deepcopy(voos_originais),
+            copy.deepcopy(pistas_originais),
+            matriz_tempo,
+            alpha
+        )
+        
+        # Fase de busca local (usando seu VND)
+        custo_vnd = VND(
+            solucao_construida['voos'],
+            solucao_construida['pistas'],
+            matriz_tempo
+        )
+        
+        # Atualiza melhor solução encontrada
+        if custo_vnd < melhor_custo:
+            melhor_custo = custo_vnd
+            melhor_solucao = {
+                'voos': solucao_construida['voos'],
+                'pistas': solucao_construida['pistas'],
+                'custo': custo_vnd
+            }
+            print(f"🚀 Nova melhor solução encontrada: custo = {melhor_custo}")
+        
+        solucoes.append([melhor_custo])
+    return melhor_custo, solucoes
 
 
-
-import time
-
-# Gera solução inicial com heurística gulosa
-voos, pistas, matriz_tempo = inicializar_instancia(numero_de_voos, numero_de_pistas, r, c, p, t)
-printar_instancia(voos, pistas, matriz_tempo)
-print('\n\n ===============================')
-heuristica_gulosa(voos, pistas, matriz_tempo)
-
-
-
-custo_inicial = calcular_custo_total(voos)
-print(f"\n💡 Custo inicial da solução gulosa: {custo_inicial}")
-'''
-# Executa VND
-inicio = time.time()
-solucao_final, custo_final = VND(voos, pistas, matriz_tempo)
-fim = time.time()
-
-print("\n🎯 RESULTADO FINAL APÓS VND")
-print(f"🔸 Melhor custo encontrado: {custo_final}")
-print(f"⏱ Tempo de execução: {fim - inicio:.4f} segundos")
-
-# Se quiser mostrar a solução final detalhada:
-print("\n📦 Atribuições finais dos voos:")
-for voo in sorted(solucao_final, key=lambda v: v.horario_atribuido):
-    atraso = max(0, voo.horario_atribuido - voo.r)
-    custo = atraso * voo.p
-    print(f"Voo {voo.id} → Pista {voo.pista_atribuida} | Início: {voo.horario_atribuido} | Duração: {voo.c} | Atraso: {atraso} | Penalidade: {custo}")
-'''
+def construir_solucao_grasp(voos, pistas, matriz_tempo, alpha):
+    """
+    Fase de construção do GRASP com aleatoriedade controlada
+    
+    Retorna:
+    - dicionário com a solução construída {'voos': ..., 'pistas': ..., 'custo': ...}
+    """
+    solucao = {
+        'voos': copy.deepcopy(voos),
+        'pistas': copy.deepcopy(pistas),
+        'custo': float('inf')
+    }
+    
+    # Lista de voos não alocados (inicialmente todos)
+    voos_nao_alocados = [v.id for v in solucao['voos']]
+    
+    while voos_nao_alocados:
+        # Passo 1: Para cada voo não alocado, calcula o melhor custo incremental
+        custos_incrementais = []
+        for voo_id in voos_nao_alocados:
+            voo = next(v for v in solucao['voos'] if v.id == voo_id)
+            
+            # Calcula o melhor horário e pista para este voo
+            melhor_inicio = float('inf')
+            melhor_pista = None
+            
+            for pista in solucao['pistas']:
+                # Calcula o tempo mais cedo possível para este voo na pista
+                tempo_minimo = voo.r
+                
+                # Verifica voos já alocados nesta pista
+                voos_pista = [v for v in solucao['voos'] if v.pista_atribuida == pista.id and v.horario_atribuido is not None]
+                voos_pista.sort(key=lambda v: v.horario_atribuido)
+                
+                # Encontra o slot adequado
+                for i in range(len(voos_pista) + 1):
+                    # Antes do primeiro voo
+                    if i == 0:
+                        if len(voos_pista) > 0:
+                            tempo_final = voo.r + voo.c
+                            separacao = matriz_tempo[voo.id][voos_pista[0].id]
+                            if tempo_final + separacao > voos_pista[0].horario_atribuido:
+                                continue  # Não cabe antes do primeiro voo
+                        inicio_candidato = voo.r
+                    # Depois do último voo
+                    elif i == len(voos_pista):
+                        voo_anterior = voos_pista[-1]
+                        inicio_candidato = max(voo.r, voo_anterior.horario_atribuido + voo_anterior.c + matriz_tempo[voo_anterior.id][voo.id])
+                    # Entre dois voos
+                    else:
+                        voo_anterior = voos_pista[i-1]
+                        voo_posterior = voos_pista[i]
+                        inicio_min = max(voo.r, voo_anterior.horario_atribuido + voo_anterior.c + matriz_tempo[voo_anterior.id][voo.id])
+                        if inicio_min + voo.c + matriz_tempo[voo.id][voo_posterior.id] > voo_posterior.horario_atribuido:
+                            continue  # Não cabe neste slot
+                        inicio_candidato = inicio_min
+                    
+                    if inicio_candidato < melhor_inicio:
+                        melhor_inicio = inicio_candidato
+                        melhor_pista = pista
+            
+            if melhor_pista is not None:
+                custo_incremental = max(0, melhor_inicio - voo.r) * voo.p
+                custos_incrementais.append((voo_id, custo_incremental, melhor_inicio, melhor_pista.id))
+        
+        if not custos_incrementais:
+            break  # Não conseguiu alocar todos os voos
+        
+        # Passo 2: Cria lista restrita de candidatos (RCL)
+        custos = [c[1] for c in custos_incrementais]
+        c_min = min(custos)
+        c_max = max(custos)
+        limite = c_min + alpha * (c_max - c_min)
+        
+        rcl = [c for c in custos_incrementais if c[1] <= limite]
+        
+        # Passo 3: Seleciona aleatoriamente da RCL
+        escolhido = random.choice(rcl)
+        voo_id, _, inicio, pista_id = escolhido
+        
+        # Passo 4: Aloca o voo escolhido
+        voo = next(v for v in solucao['voos'] if v.id == voo_id)
+        voo.horario_atribuido = inicio
+        voo.pista_atribuida = pista_id
+        
+        # Atualiza pista
+        pista = next(p for p in solucao['pistas'] if p.id == pista_id)
+        for t in range(inicio, inicio + voo.c):
+            pista.ocupada_em.add(t)
+        
+        # Remove da lista de não alocados
+        voos_nao_alocados.remove(voo_id)
+    
+    # Calcula custo total da solução construída
+    solucao['custo'] = calcular_custo_total(solucao['voos'])
+    
+    return solucao

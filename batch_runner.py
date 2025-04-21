@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import time
-from main_3 import inicializar_instancia, heuristica_gulosa, calcular_custo_total, VND, grasp
+from main import inicializar_instancia, heuristica_gulosa, calcular_custo_total, VND, grasp
 
 # Caminho para a pasta com os arquivos de entrada
 pasta_instancias = 'instancias_teste3'

@@ -29,11 +29,13 @@ class Voo:
         self.horario_atribuido = None  # será preenchido na solução
         self.pista_atribuida = None    # idem
 
+
 # Representação de uma pista
 class Pista:
     def __init__(self, id_pista):
         self.id = id_pista
         self.ocupada_em = set()  # horários em que essa pista já está ocupada
+
 
 # Função que inicializa as estruturas
 def inicializar_instancia(numero_de_voos, numero_de_pistas, r, c, p, t):
@@ -43,23 +45,7 @@ def inicializar_instancia(numero_de_voos, numero_de_pistas, r, c, p, t):
     return voos, pistas, matriz_tempo
 
 
-def printar_instancia(voos, pistas, matriz_tempo):
-    print(" VOOS:")
-    for voo in voos:
-        print(
-            f"Voo {voo.id}: r = {voo.r}, c = {voo.c}, p = {voo.p}, "
-            f"horário atribuído = {voo.horario_atribuido}, pista = {voo.pista_atribuida}"
-        )
-
-    print("\n PISTAS:")
-    for pista in pistas:
-        print(f"Pista {pista.id}, horários ocupados: {sorted(pista.ocupada_em)}")
-
-    print("\n MATRIZ DE SEPARAÇÃO (t):")
-    for i, linha in enumerate(matriz_tempo):
-        print(f"Voo {i}: {linha}")
-
-# GULOSO ========================================================================================================================
+# Algoritmo Guloso
 def heuristica_gulosa(voos, pistas, matriz_tempo):
     custo_total = 0
 
@@ -103,9 +89,8 @@ def heuristica_gulosa(voos, pistas, matriz_tempo):
 
     print(f"\n💸 Custo total de penalidade: {custo_total}")
 
-# VIZINHANÇA ===============================================================================================================
 
-## Funções Auxiliares:
+# Funções Auxiliares
 def calcular_custo_total(voos):
     """Calcula o custo total da solução atual"""
     custo = 0
@@ -114,6 +99,23 @@ def calcular_custo_total(voos):
             atraso = max(0, voo.horario_atribuido - voo.r)
             custo += atraso * voo.p
     return custo
+
+
+def printar_instancia(voos, pistas, matriz_tempo):
+    print(" VOOS:")
+    for voo in voos:
+        print(
+            f"Voo {voo.id}: r = {voo.r}, c = {voo.c}, p = {voo.p}, "
+            f"horário atribuído = {voo.horario_atribuido}, pista = {voo.pista_atribuida}"
+        )
+
+    print("\n PISTAS:")
+    for pista in pistas:
+        print(f"Pista {pista.id}, horários ocupados: {sorted(pista.ocupada_em)}")
+
+    print("\n MATRIZ DE SEPARAÇÃO (t):")
+    for i, linha in enumerate(matriz_tempo):
+        print(f"Voo {i}: {linha}")
 
 
 def recalcular_horarios(voos, pistas, matriz_tempo, pistas_afetadas):
@@ -184,6 +186,7 @@ def recalcular_horarios_pista(voos_pista, pista, matriz_tempo):
     return True
 
 
+# Movimentos de vizinhança
 def movimento_swap(voos, pistas, matriz_tempo):
     """
     Tenta trocar dois voos de pista e horário. 
@@ -357,6 +360,7 @@ def movimento_ajuste_horario(voos, pistas, matriz_tempo):
     return melhorou, melhor_voos, melhor_custo
 
 
+# VND
 def VND(voos, pistas, matriz_tempo):
     """
     Algoritmo VND que aplica os movimentos de vizinhança em ordem
@@ -389,6 +393,7 @@ def VND(voos, pistas, matriz_tempo):
     return melhor_custo
 
 
+# Grasp
 def grasp(voos_originais, pistas_originais, matriz_tempo, max_iteracoes=10, alpha=0.3):
     """
     Implementação do GRASP para o problema de escalonamento de voos
